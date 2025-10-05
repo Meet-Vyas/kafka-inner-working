@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/binary"
 	"fmt"
+	"io"
 	"net"
 	"os"
 )
@@ -21,13 +23,35 @@ func main() {
 		fmt.Println("Failed to bind to port 9092")
 		os.Exit(1)
 	}
-	conn, err := l.Accept()
-	if err != nil {
-		fmt.Println("Error accepting connection: ", err.Error())
-		os.Exit(1)
+	for {
+		conn, err := l.Accept()
+		if err != nil {
+			fmt.Println("Error accepting connection: ", err.Error())
+			os.Exit(1)
+		}
+		go handleConn(conn)
 	}
+}
+
+func handleConn(conn net.Conn) {
 	defer conn.Close()
 	fmt.Println("Accepted connection from ", conn.RemoteAddr().String())
+
+	var sizeBuf [4]byte
+	_, err := io.ReadFull(conn, sizeBuf[:])
+	if err != nil {
+		fmt.Println("Error reading size: ", err)
+		return
+	}
+	size := binary.BigEndian.Uint32(sizeBuf[:])
+
+	if size > 0 {
+		_, err := io.CopyN(io.Discard, conn, int64(size))
+		if err != nil {
+			fmt.Println("Error draining payload: ", err)
+			return
+		}
+	}
 
 	resp := []byte {
 		0x00, 0x00, 0x00, 0x00,
@@ -35,8 +59,8 @@ func main() {
 	}
 	_, err = conn.Write(resp)
 	if err != nil {
-		fmt.Println("Error writing response: ", err.Error())
-		os.Exit(1)
+		fmt.Println("Error writing response: ", err)
+		return
 	}
 	return
 }
