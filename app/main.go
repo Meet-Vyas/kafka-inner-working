@@ -45,18 +45,34 @@ func handleConn(conn net.Conn) {
 	}
 	size := binary.BigEndian.Uint32(sizeBuf[:])
 
+	var corrID uint32
 	if size > 0 {
-		_, err := io.CopyN(io.Discard, conn, int64(size))
-		if err != nil {
-			fmt.Println("Error draining payload: ", err)
-			return
+		if size < 8 {
+			fmt.Println("Request too short for header v2: ", size)
+			_, _ = io.CopyN(io.Discard, conn, int64(size))
+		} else {
+			var headerPrefix [8]byte
+			_, err := io.ReadFull(conn, headerPrefix[:])
+			if err != nil {
+				fmt.Println("Error reading header: ", err)
+				return
+			}
+			corrID = binary.BigEndian.Uint32(headerPrefix[4:8])
+
+			remaining := int(size) - 8
+			if remaining > 0 {
+				_, err := io.CopyN(io.Discard, conn, int64(remaining))
+				if err != nil {
+					fmt.Println("Error draining remaining payload: ", err)
+					return
+				}
+			}
 		}
 	}
 
-	resp := []byte {
-		0x00, 0x00, 0x00, 0x00,
-		0x00, 0x00, 0x00, 0x07,
-	}
+	resp := make([]byte, 8)
+	binary.BigEndian.PutUint32(resp[0:4], 0)
+	binary.BigEndian.PutUint32(resp[4:8], corrID)
 	_, err = conn.Write(resp)
 	if err != nil {
 		fmt.Println("Error writing response: ", err)
