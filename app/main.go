@@ -78,9 +78,10 @@ func handleConn(conn net.Conn) {
 	}
 
 	const apiKeysCount = 1
-	    // error_code(2) + api_keys array length(4) + entries(api_key(2)+min(2)+max(2) each)
-    // + throttle_time_ms(4) + tagged fields (varint 0 => 1 byte)
-	bodyLen := 2 + 4 + apiKeysCount*(2+2+2) + 4 + 1 
+	apiKeysVarintLen := 1
+	// api_key + min + max + per-entry tagged fields (0)
+	entrySize := 2 + 2 + 2 + 1
+	bodyLen := 2 + apiKeysVarintLen + apiKeysCount*entrySize + 4 + 1 
 	totalLen := 4 + bodyLen        // corr_id(4) + bodyLen
 
 	resp := make([]byte, 4 + totalLen) // first 4 bytes: message length
@@ -91,8 +92,10 @@ func handleConn(conn net.Conn) {
 	binary.BigEndian.PutUint16(resp[offset:offset+2], uint16(errorCode))
 	offset += 2
 
-	binary.BigEndian.PutUint32(resp[offset:offset+4], uint32(apiKeysCount))
-	offset += 4
+	// api_keys compact-array length: unsigned varint (len + 1).
+	// For 1 entry -> value = 2 -> single byte 0x02
+	resp[offset] = byte(apiKeysCount + 1)
+	offset += 1
 	
 	// API Key entry	
 	binary.BigEndian.PutUint16(resp[offset:offset+2], 18)
@@ -103,6 +106,9 @@ func handleConn(conn net.Conn) {
 	// max version
 	binary.BigEndian.PutUint16(resp[offset:offset+2], 4)
 	offset += 2
+	// tagged fields (varint 0 => 1 byte)
+	resp[offset] = 0
+	offset += 1
 	// throttle_time_ms
 	binary.BigEndian.PutUint32(resp[offset:offset+4], 0)
 	offset += 4
