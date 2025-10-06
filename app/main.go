@@ -77,10 +77,31 @@ func handleConn(conn net.Conn) {
 		}
 	}
 
-	resp := make([]byte, 10)
-	binary.BigEndian.PutUint32(resp[0:4], 0)
+	const apiKeysCount = 1
+	bodyLen := 2 + 4 + apiKeysCount*(2+2+2) // error_code(2) + array_length(4) + entries(6 bytes each)
+	totalLen := 4 + bodyLen        // corr_id(4) + bodyLen
+
+	resp := make([]byte, 4 + totalLen) // first 4 bytes: message length
+	binary.BigEndian.PutUint32(resp[0:4], uint32(totalLen))
 	binary.BigEndian.PutUint32(resp[4:8], corrID)
-	binary.BigEndian.PutUint16(resp[8:10], uint16(errorCode))
+	
+	offset := 8
+	binary.BigEndian.PutUint16(resp[offset:offset+2], uint16(errorCode))
+	offset += 2
+
+	binary.BigEndian.PutUint32(resp[offset:offset+4], uint32(apiKeysCount))
+	offset += 4
+	
+	// API Key entry	
+	binary.BigEndian.PutUint16(resp[offset:offset+2], 18)
+	offset += 2
+
+	binary.BigEndian.PutUint16(resp[offset:offset+2], 0)
+	offset += 2
+
+	binary.BigEndian.PutUint16(resp[offset:offset+2], 4)
+	offset += 2
+
 	_, err = conn.Write(resp)
 	if err != nil {
 		fmt.Println("Error writing response: ", err)
