@@ -45,6 +45,7 @@ func handleConn(conn net.Conn) {
 	}
 	size := binary.BigEndian.Uint32(sizeBuf[:])
 
+	var errorCode int16 = 0
 	var corrID uint32
 	if size > 0 {
 		if size < 8 {
@@ -57,7 +58,13 @@ func handleConn(conn net.Conn) {
 				fmt.Println("Error reading header: ", err)
 				return
 			}
+
+			apiVersion := binary.BigEndian.Uint16(headerPrefix[2:4])
 			corrID = binary.BigEndian.Uint32(headerPrefix[4:8])
+
+			if apiVersion > 4 {
+				errorCode = 35 // Unsupported Version
+			}
 
 			remaining := int(size) - 8
 			if remaining > 0 {
@@ -70,9 +77,10 @@ func handleConn(conn net.Conn) {
 		}
 	}
 
-	resp := make([]byte, 8)
+	resp := make([]byte, 10)
 	binary.BigEndian.PutUint32(resp[0:4], 0)
 	binary.BigEndian.PutUint32(resp[4:8], corrID)
+	binary.BigEndian.PutUint16(resp[8:10], uint16(errorCode))
 	_, err = conn.Write(resp)
 	if err != nil {
 		fmt.Println("Error writing response: ", err)
